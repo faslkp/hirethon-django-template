@@ -1,0 +1,32 @@
+# Base image with common OS dependencies and setup
+FROM python:3.11.4-slim-bullseye
+
+ARG APP_HOME=/app
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR ${APP_HOME}
+
+# Create django user and group
+RUN addgroup --system django \
+    && adduser --system --ingroup django django
+
+# Install all required system dependencies
+RUN apt-get update && apt-get install --no-install-recommends -y \
+  # dependencies for building Python packages
+  build-essential \
+  # psycopg2 dependencies
+  libpq-dev \
+  # Translations dependencies
+  gettext \
+  # libmagic for python-magic dependency
+  libmagic-dev \
+  # cleaning up unused files
+  && apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false \
+  && rm -rf /var/lib/apt/lists/*
+
+
+# Make django user owner of the workdir
+RUN chown django:django ${APP_HOME}
