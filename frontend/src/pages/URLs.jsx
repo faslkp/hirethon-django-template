@@ -20,8 +20,13 @@ export const URLs = () => {
     short_code: '',
     tags: '',
     is_private: false,
+    expires_at: '',
   });
   const [formErrors, setFormErrors] = useState({});
+  
+  // Tag filtering state
+  const [selectedTags, setSelectedTags] = useState([]);
+  const [tagSortBy, setTagSortBy] = useState('recent'); // 'recent' or 'popular'
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -44,7 +49,7 @@ export const URLs = () => {
         await createUrl.mutateAsync(data);
       }
       
-      setFormData({ namespace_id: '', original_url: '', short_code: '', tags: '', is_private: false });
+      setFormData({ namespace_id: '', original_url: '', short_code: '', tags: '', is_private: false, expires_at: '' });
       setShowModal(false);
       setEditingUrl(null);
     } catch (error) {
@@ -74,6 +79,7 @@ export const URLs = () => {
       short_code: url.short_code,
       tags: url.tags || '',
       is_private: url.is_private,
+      expires_at: url.expires_at ? url.expires_at.split('T')[0] : '', // Convert to date input format
     });
     setShowModal(true);
   };
@@ -81,7 +87,7 @@ export const URLs = () => {
   const handleCloseModal = () => {
     setShowModal(false);
     setEditingUrl(null);
-    setFormData({ namespace_id: '', original_url: '', short_code: '', tags: '', is_private: false });
+    setFormData({ namespace_id: '', original_url: '', short_code: '', tags: '', is_private: false, expires_at: '' });
     setFormErrors({});
   };
 
@@ -96,6 +102,60 @@ export const URLs = () => {
     if (window.confirm('Are you sure you want to delete this URL?')) {
       await deleteUrl.mutateAsync(id);
     }
+  };
+
+  // Tag filtering functions
+  const toggleTagFilter = (tag) => {
+    setSelectedTags(prev => 
+      prev.includes(tag) 
+        ? prev.filter(t => t !== tag)
+        : [...prev, tag]
+    );
+  };
+
+  const clearAllTagFilters = () => {
+    setSelectedTags([]);
+  };
+
+  const getAllTags = () => {
+    if (!urls) return [];
+    const allTags = urls.flatMap(url => 
+      url.tags ? url.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : []
+    );
+    return [...new Set(allTags)]; // Remove duplicates
+  };
+
+  const getSortedTags = () => {
+    const tags = getAllTags();
+    if (tagSortBy === 'popular') {
+      // Sort by frequency
+      const tagCounts = {};
+      urls.forEach(url => {
+        if (url.tags) {
+          url.tags.split(',').forEach(tag => {
+            const trimmedTag = tag.trim();
+            if (trimmedTag) {
+              tagCounts[trimmedTag] = (tagCounts[trimmedTag] || 0) + 1;
+            }
+          });
+        }
+      });
+      return tags.sort((a, b) => (tagCounts[b] || 0) - (tagCounts[a] || 0));
+    } else {
+      // Sort by recent (alphabetical for now)
+      return tags.sort();
+    }
+  };
+
+  const getFilteredUrls = () => {
+    if (!urls) return [];
+    if (selectedTags.length === 0) return urls;
+    
+    return urls.filter(url => {
+      if (!url.tags) return false;
+      const urlTags = url.tags.split(',').map(tag => tag.trim());
+      return selectedTags.some(selectedTag => urlTags.includes(selectedTag));
+    });
   };
 
   const handleGenerateQR = async (id) => {
@@ -126,21 +186,68 @@ export const URLs = () => {
           </button>
         </div>
 
+        {/* Tag Filtering Section */}
+        {!isLoading && urls && urls.length > 0 && (
+          <div className="bg-white shadow rounded-lg p-4 mb-6">
+            <div className="flex items-center space-x-4">
+              <h3 className="text-sm font-medium text-gray-900 whitespace-nowrap">Filter by tags</h3>
+              <select
+                  value={tagSortBy}
+                  onChange={(e) => setTagSortBy(e.target.value)}
+                  className="px-2 py-1 border border-gray-300 rounded text-xs"
+                >
+                  <option value="recent">Recent first</option>
+                  <option value="popular">Popular first</option>
+                </select>
+
+              <div className="flex items-center space-x-2 flex-1 overflow-x-auto scrollbar-thin">
+                {getSortedTags().map((tag) => (
+                  <button
+                    key={tag}
+                    onClick={() => toggleTagFilter(tag)}
+                    className={`px-3 py-1 rounded-full text-sm whitespace-nowrap transition-colors ${
+                      selectedTags.includes(tag)
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+              
+              <div className="flex items-center space-x-2 whitespace-nowrap">
+                {selectedTags.length > 0 && (
+                  <button
+                    onClick={clearAllTagFilters}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           <p>Loading...</p>
         ) : (
-          <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-            <table className="min-w-full divide-y divide-gray-200">
+          <div className="bg-white shadow overflow-hidden sm:rounded-lg overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200" style={{ minWidth: '1200px' }}>
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Short URL</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Original URL</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created By</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created At</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Expiry</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Clicks</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky right-0 bg-gray-50 border-l border-gray-200">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {urls?.map((url) => (
+                {getFilteredUrls()?.map((url) => (
                   <tr key={url.id}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
@@ -167,36 +274,60 @@ export const URLs = () => {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm text-gray-900 hover:underline"
+                        title={url.original_url}
                       >
-                        {url.original_url.length > 60 ? 
-                        `${url.original_url.substring(0, 60)}...` : url.original_url}
+                        {url.original_url.length > 30 ? 
+                        `${url.original_url.substring(0, 30)}...` : url.original_url}
                       </a>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {url.created_by?.name || url.created_by?.email || 'Unknown'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {new Date(url.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm">
+                      {url.expires_at ? (
+                        <span className={new Date(url.expires_at) < new Date() ? 'text-red-600' : 'text-gray-500'}>
+                          {new Date(url.expires_at).toLocaleDateString()}
+                        </span>
+                      ) : (
+                        <span className="text-gray-500">Never</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {url.click_count}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                      <button
-                        onClick={() => handleGenerateQR(url.id)}
-                        className="text-blue-600 hover:text-blue-800"
-                        title="Generate QR Code"
-                      >
-                        QR
-                      </button>
-                      <button
-                        onClick={() => handleEdit(url)}
-                        className="text-green-600 hover:text-green-800"
-                        title="Edit"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(url.id)}
-                        className="text-red-600 hover:text-red-800"
-                        title="Delete"
-                      >
-                        Delete
-                      </button>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm sticky right-0 bg-white border-l border-gray-200">
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={() => handleGenerateQR(url.id)}
+                          className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                          title="Generate QR Code"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleEdit(url)}
+                          className="p-1 text-green-600 hover:text-green-800 hover:bg-green-50 rounded"
+                          title="Edit"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => handleDelete(url.id)}
+                          className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                          title="Delete"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -311,6 +442,22 @@ export const URLs = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                     placeholder="marketing, campaign"
                   />
+                </div>
+                
+                <div>
+                  <label htmlFor="expires_at" className="block text-sm font-medium text-gray-700 mb-1">
+                    Expiry Date (optional)
+                  </label>
+                  <input
+                    type="date"
+                    id="expires_at"
+                    value={formData.expires_at}
+                    onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  />
+                  {formErrors.expires_at && (
+                    <p className="mt-1 text-sm text-red-600">{getErrorMessage(formErrors.expires_at)}</p>
+                  )}
                 </div>
                 
                 <div className="flex items-center">
