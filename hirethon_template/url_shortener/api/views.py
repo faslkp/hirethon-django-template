@@ -645,55 +645,129 @@ class URLRedirectView(View):
     """View to handle short URL redirects"""
     
     def get(self, request, namespace, short_code):
+        print(f"DEBUG: URLRedirectView called - namespace: {namespace}, short_code: {short_code}")
+        print(f"DEBUG: Request path: {request.path}")
+        print(f"DEBUG: Request method: {request.method}")
+        
         # Find the short URL
         try:
             short_url = ShortURL.objects.select_related('namespace').get(
                 namespace__name=namespace,
                 short_code=short_code
             )
+            print(f"DEBUG: Short URL found: {short_url}")
         except ShortURL.DoesNotExist:
+            print(f"DEBUG: Short URL not found - namespace: {namespace}, short_code: {short_code}")
             raise Http404("Short URL not found")
         
         # Check if expired
         if short_url.is_expired():
             raise Http404("This URL has expired")
         
+        # Debug: Print URL details
+        print(f"DEBUG: Short URL - is_private: {short_url.is_private}")
+        print(f"DEBUG: Short URL - namespace: {short_url.namespace.name}")
+        print(f"DEBUG: Short URL - organization: {short_url.namespace.organization.name}")
+        
         # Check if private
         if short_url.is_private:
-            # Check for JWT token in query params or header
-            token = request.GET.get('token') or request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
+            # Check if user is authenticated via session or JWT
+            user = None
             
-            if not token:
-                from django.http import JsonResponse
-                return JsonResponse(
-                    {"error": "This is a private URL. Authentication required."},
-                    status=403
-                )
+            # Debug: Print authentication status
+            print(f"DEBUG: User authenticated: {request.user.is_authenticated}")
+            print(f"DEBUG: User: {request.user}")
+            print(f"DEBUG: Session key: {request.session.session_key}")
             
-            # Validate JWT token
-            try:
-                jwt_auth = JWTAuthentication()
-                validated_token = jwt_auth.get_validated_token(token)
-                user = jwt_auth.get_user(validated_token)
+            # Try session authentication first
+            if request.user.is_authenticated:
+                user = request.user
+                print(f"DEBUG: Using session user: {user}")
+            else:
+                print("DEBUG: No session authentication")
+                # Try JWT token in query params or header
+                token = request.GET.get('token') or request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
                 
-                # Check if user is member of the organization
-                is_member = OrganizationMembership.objects.filter(
-                    organization=short_url.namespace.organization,
-                    user=user
-                ).exists()
+                if token:
+                    try:
+                        jwt_auth = JWTAuthentication()
+                        validated_token = jwt_auth.get_validated_token(token)
+                        user = jwt_auth.get_user(validated_token)
+                        print(f"DEBUG: Using JWT user: {user}")
+                    except Exception as e:
+                        print(f"DEBUG: JWT authentication failed: {e}")
+                        pass  # Invalid token, will show login page
+                else:
+                    print("DEBUG: No JWT token provided")
+            
+            if not user:
+                from django.http import HttpResponse
+                from django.conf import settings
+                from urllib.parse import urlencode
                 
-                if not is_member:
-                    from django.http import JsonResponse
-                    return JsonResponse(
-                        {"error": "You don't have access to this private URL."},
-                        status=403
-                    )
-            except Exception:
-                from django.http import JsonResponse
-                return JsonResponse(
-                    {"error": "Invalid authentication token."},
-                    status=403
-                )
+                # Create return URL for after login
+                current_url = request.build_absolute_uri()
+                return_url = urlencode({'next': current_url})
+                
+                # Return HTML error page with login redirect
+                html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Private URL - Authentication Required</title>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                        body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background-color: #f9fafb; }}
+                        .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                        h1 {{ color: #dc2626; margin-bottom: 20px; }}
+                        p {{ color: #6b7280; margin-bottom: 30px; }}
+                        .login-btn {{ background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; }}
+                        .login-btn:hover {{ background-color: #2563eb; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>🔒 Private URL</h1>
+                        <p>This is a private URL that requires authentication to access.</p>
+                        <p>Please log in to your account to view this content.</p>
+                        <a href="{settings.SITE_PROTOCOL}://{settings.SITE_DOMAIN}/auth/login/?{return_url}" class="login-btn">Go to Login</a>
+                    </div>
+                </body>
+                </html>
+                """
+                return HttpResponse(html_content, content_type='text/html', status=403)
+            
+            # Check if user is the creator of the URL
+            if user != short_url.created_by:
+                print(f"DEBUG: Access denied - User {user} is not the creator {short_url.created_by}")
+                from django.http import HttpResponse
+                html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>Access Denied</title>
+                    <meta charset="utf-8">
+                    <meta name="viewport" content="width=device-width, initial-scale=1">
+                    <style>
+                        body {{ font-family: Arial, sans-serif; text-align: center; padding: 50px; background-color: #f9fafb; }}
+                        .container {{ max-width: 500px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                        h1 {{ color: #dc2626; margin-bottom: 20px; }}
+                        p {{ color: #6b7280; margin-bottom: 30px; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <h1>🚫 Access Denied</h1>
+                        <p>This is a private URL that can only be accessed by its creator.</p>
+                        <p>Only the user who created this URL can access it.</p>
+                    </div>
+                </body>
+                </html>
+                """
+                return HttpResponse(html_content, content_type='text/html', status=403)
+            else:
+                print(f"DEBUG: Access granted - User {user} is the creator of the URL")
         
         # Increment click count
         ShortURL.objects.filter(id=short_url.id).update(
@@ -706,4 +780,152 @@ class URLRedirectView(View):
 
 # Import models for F() expression
 from django.db import models
+
+class SessionLoginView(View):
+    """Custom login view for session-based authentication"""
+    
+    def get(self, request):
+        from django.http import HttpResponse
+        from django.conf import settings
+        from django.middleware.csrf import get_token
+        
+        next_url = request.GET.get('next', '/')
+        csrf_token = get_token(request)
+        
+        html_content = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Login - Private URL Access</title>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <style>
+                body {{ font-family: Arial, sans-serif; background-color: #f9fafb; padding: 50px; }}
+                .container {{ max-width: 400px; margin: 0 auto; background: white; padding: 40px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+                h1 {{ color: #1f2937; margin-bottom: 30px; text-align: center; }}
+                .form-group {{ margin-bottom: 20px; }}
+                label {{ display: block; margin-bottom: 5px; font-weight: 500; color: #374151; }}
+                input {{ width: 100%; padding: 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 16px; }}
+                input:focus {{ outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }}
+                .login-btn {{ width: 100%; background-color: #3b82f6; color: white; padding: 12px; border: none; border-radius: 6px; font-size: 16px; cursor: pointer; }}
+                .login-btn:hover {{ background-color: #2563eb; }}
+                .login-btn:disabled {{ background-color: #9ca3af; cursor: not-allowed; }}
+                .error {{ color: #dc2626; margin-top: 10px; text-align: center; }}
+                .frontend-link {{ text-align: center; margin-top: 20px; }}
+                .frontend-link a {{ color: #3b82f6; text-decoration: none; }}
+                .frontend-link a:hover {{ text-decoration: underline; }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>🔐 Login Required</h1>
+                <form method="post" id="loginForm">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{csrf_token}">
+                    <div class="form-group">
+                        <label for="email">Email:</label>
+                        <input type="email" id="email" name="email" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password:</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <button type="submit" class="login-btn" id="loginBtn">Login</button>
+                    <div id="error" class="error" style="display: none;"></div>
+                </form>
+                <div class="frontend-link">
+                    <a href="{settings.SITE_PROTOCOL}://{settings.SITE_DOMAIN}/login">Use Frontend Login Instead</a>
+                </div>
+            </div>
+            
+            <script>
+                document.getElementById('loginForm').addEventListener('submit', async function(e) {{
+                    e.preventDefault();
+                    
+                    const email = document.getElementById('email').value;
+                    const password = document.getElementById('password').value;
+                    const errorDiv = document.getElementById('error');
+                    const loginBtn = document.getElementById('loginBtn');
+                    
+                    loginBtn.disabled = true;
+                    loginBtn.textContent = 'Logging in...';
+                    errorDiv.style.display = 'none';
+                    
+                    try {{
+                        // Use form submission for session-based authentication
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = '/auth/login/';
+                        
+                        const emailField = document.createElement('input');
+                        emailField.type = 'hidden';
+                        emailField.name = 'email';
+                        emailField.value = email;
+                        
+                        const passwordField = document.createElement('input');
+                        passwordField.type = 'hidden';
+                        passwordField.name = 'password';
+                        passwordField.value = password;
+                        
+                        const nextField = document.createElement('input');
+                        nextField.type = 'hidden';
+                        nextField.name = 'next';
+                        nextField.value = '{next_url}';
+                        
+                        const csrfField = document.createElement('input');
+                        csrfField.type = 'hidden';
+                        csrfField.name = 'csrfmiddlewaretoken';
+                        csrfField.value = '{csrf_token}';
+                        
+                        form.appendChild(emailField);
+                        form.appendChild(passwordField);
+                        form.appendChild(nextField);
+                        form.appendChild(csrfField);
+                        document.body.appendChild(form);
+                        form.submit();
+                    }} catch (error) {{
+                        errorDiv.textContent = 'Login failed. Please try again.';
+                        errorDiv.style.display = 'block';
+                        loginBtn.disabled = false;
+                        loginBtn.textContent = 'Login';
+                    }}
+                }});
+            </script>
+        </body>
+        </html>
+        """
+        return HttpResponse(html_content, content_type='text/html')
+    
+    def post(self, request):
+        from django.contrib.auth import authenticate, login
+        from django.http import HttpResponseRedirect
+        from django.contrib import messages
+        from django.middleware.csrf import get_token
+        
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+        next_url = request.POST.get('next', '/')
+        
+        print(f"DEBUG: POST request received - Email: {email}, Next: {next_url}")
+        print(f"DEBUG: CSRF token valid: {request.META.get('CSRF_COOKIE')}")
+        
+        if email and password:
+            # Authenticate user
+            user = authenticate(request, username=email, password=password)
+            if user is not None:
+                # Login user and create session
+                login(request, user)
+                print(f"DEBUG: User logged in via session: {user}")
+                print(f"DEBUG: Session key after login: {request.session.session_key}")
+                # Redirect to the next URL
+                return HttpResponseRedirect(next_url)
+            else:
+                # Authentication failed
+                print("DEBUG: Authentication failed - invalid credentials")
+                messages.error(request, 'Invalid email or password.')
+        else:
+            print("DEBUG: Missing email or password")
+            messages.error(request, 'Please provide both email and password.')
+        
+        # If authentication failed, redirect back to login page
+        return HttpResponseRedirect(f'/auth/login/?next={next_url}')
 

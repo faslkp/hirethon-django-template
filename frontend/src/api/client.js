@@ -12,13 +12,22 @@ const apiClient = axios.create({
   withCredentials: true, // Important for cookies/CSRF tokens
 });
 
-// Add request interceptor to include JWT token
+// Add request interceptor to include JWT token and CSRF token
 apiClient.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('access_token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Add CSRF token for non-API endpoints (like session-based login)
+    if (config.url && !config.url.startsWith('/api/') && !config.url.startsWith('/rest-auth/')) {
+      const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+      if (csrfToken) {
+        config.headers['X-CSRFToken'] = csrfToken;
+      }
+    }
+    
     return config;
   },
   (error) => {
