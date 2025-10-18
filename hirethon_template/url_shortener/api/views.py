@@ -463,6 +463,29 @@ class ShortURLViewSet(viewsets.ModelViewSet):
         """Generate QR code for the short URL"""
         short_url = self.get_object()
         
+        # Check if QR code already exists and URL hasn't changed
+        if short_url.qr_code and short_url.qr_code.name:
+            # Verify the existing QR code is still valid by checking if file exists
+            from django.core.files.storage import default_storage
+            from django.conf import settings
+            
+            # Only check the S3 storage directly
+            file_exists = False
+            try:
+                from hirethon_template.utils.storages import MediaRootS3Boto3Storage
+                s3_storage = MediaRootS3Boto3Storage()
+                file_exists = s3_storage.exists(short_url.qr_code.name)
+            except Exception as e:
+                file_exists = False
+            
+            if file_exists:
+                serializer = self.get_serializer(short_url, context={'request': request})
+                return Response({
+                    "message": "QR code already exists",
+                    "qr_code": serializer.data.get('qr_code'),
+                    "full_short_url": serializer.data.get('full_short_url')
+                })
+        
         # Import qrcode here to avoid import errors if not installed
         try:
             import qrcode
@@ -485,10 +508,36 @@ class ShortURLViewSet(viewsets.ModelViewSet):
             buffer.seek(0)
             
             filename = f"qr_{short_url.namespace.name}_{short_url.short_code}.png"
-            short_url.qr_code.save(filename, ContentFile(buffer.read()), save=True)
+            
+            # Use the configured storage (S3 if enabled) with fallback to local
+            from django.core.files.storage import default_storage
+            from django.core.files.storage import FileSystemStorage
+            
+            # Create ContentFile once from the buffer
+            content_file = ContentFile(buffer.read())
+            content_file.seek(0)  # Reset ContentFile position
+            
+            try:
+                # Import the S3 storage class directly
+                from hirethon_template.utils.storages import MediaRootS3Boto3Storage
+                s3_storage = MediaRootS3Boto3Storage()
+                file_path = s3_storage.save(f"qr_codes/{filename}", content_file)
+                short_url.qr_code = file_path
+                short_url.save()
+            except Exception as e:
+                # Fallback to local storage if S3 fails
+                content_file.seek(0)
+                local_storage = FileSystemStorage()
+                file_path = local_storage.save(f"qr_codes/{filename}", content_file)
+                short_url.qr_code = file_path
+                short_url.save()
             
             serializer = self.get_serializer(short_url, context={'request': request})
-            return Response(serializer.data)
+            return Response({
+                "message": "QR code generated successfully",
+                "qr_code": serializer.data.get('qr_code'),
+                "full_short_url": serializer.data.get('full_short_url')
+            })
         except ImportError:
             return Response(
                 {"error": "QR code generation is not available. Install qrcode library."},

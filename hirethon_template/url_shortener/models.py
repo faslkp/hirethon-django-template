@@ -4,6 +4,7 @@ from django.db import models
 from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import URLValidator
+from django.core.files.storage import default_storage
 
 
 def generate_short_code(length=6):
@@ -232,6 +233,7 @@ class ShortURL(models.Model):
     qr_code = models.FileField(
         _("QR Code"),
         upload_to="qr_codes/",
+        storage=default_storage,
         null=True,
         blank=True
     )
