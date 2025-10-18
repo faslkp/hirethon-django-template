@@ -279,3 +279,6 @@ hirethon_template/media/
 .env
 .envs/*
 !.envs/.local/
+# Environment files with sensitive credentials
+.envs/.local/.django
+.envs/.local/.postgres
