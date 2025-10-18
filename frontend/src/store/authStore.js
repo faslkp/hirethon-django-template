@@ -117,5 +117,24 @@ export const useAuthStore = create((set) => ({
       return { success: false, error: error.response?.data || 'Refresh failed' };
     }
   },
+
+  googleLogin: async (accessToken) => {
+    try {
+      const data = await authAPI.googleLogin(accessToken);
+      localStorage.setItem('access_token', data.access);
+      localStorage.setItem('refresh_token', data.refresh);
+      
+      // Get user info
+      const user = await authAPI.getCurrentUser(data.access);
+      set({ user, isAuthenticated: true });
+      
+      return { success: true };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error.response?.data || 'Google login failed' 
+      };
+    }
+  },
 }));
 

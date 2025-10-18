@@ -27,6 +27,7 @@ urlpatterns = [
 
 # Import invitation views
 from hirethon_template.url_shortener.api.views import get_invitation, accept_invitation, SessionLoginView
+from hirethon_template.users.google_auth import google_auth
 
 # API URLS
 urlpatterns += [
@@ -42,6 +43,7 @@ urlpatterns += [
     ),
     path('rest-auth/', include('dj_rest_auth.urls')),
     path('rest-auth/registration/', include('dj_rest_auth.registration.urls')),
+    path('api/auth/google/', google_auth, name='google_auth'),
     # Invitation endpoints
     path("api/invitations/get/", get_invitation, name="get-invitation"),
     path("api/invitations/accept/", accept_invitation, name="accept-invitation"),

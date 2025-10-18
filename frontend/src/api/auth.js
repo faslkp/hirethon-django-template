@@ -53,5 +53,12 @@ export const authAPI = {
     }, { withCredentials: true });
     return response.data;
   },
+
+  googleLogin: async (accessToken) => {
+    const response = await axios.post(`${API_BASE_URL}/api/auth/google/`, {
+      access_token: accessToken,
+    });
+    return response.data;
+  },
 };
 

@@ -324,6 +324,9 @@ SOCIALACCOUNT_ADAPTER = "hirethon_template.users.adapters.SocialAccountAdapter"
 # https://django-allauth.readthedocs.io/en/latest/forms.html
 SOCIALACCOUNT_FORMS = {"signup": "hirethon_template.users.forms.UserSocialSignupForm"}
 
+# Google OAuth Configuration (for React frontend)
+# No django-allauth configuration needed - React handles OAuth directly
+
 # django-rest-framework
 # -------------------------------------------------------------------------------
 # django-rest-framework - https://www.django-rest-framework.org/api-guide/settings/
