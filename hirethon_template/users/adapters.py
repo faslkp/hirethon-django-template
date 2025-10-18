@@ -15,6 +15,23 @@ if typing.TYPE_CHECKING:
 class AccountAdapter(DefaultAccountAdapter):
     def is_open_for_signup(self, request: HttpRequest) -> bool:
         return getattr(settings, "ACCOUNT_ALLOW_REGISTRATION", True)
+    
+    def save_user(self, request, user, form, commit=True):
+        """
+        Save user with the name field before commit.
+        This ensures the signal has access to the name.
+        """
+        user = super().save_user(request, user, form, commit=False)
+        # Get name from request data
+        data = getattr(form, 'cleaned_data', {})
+        if 'name' in data:
+            user.name = data['name']
+        elif hasattr(request, 'data') and 'name' in request.data:
+            user.name = request.data.get('name', '')
+        
+        if commit:
+            user.save()
+        return user
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):

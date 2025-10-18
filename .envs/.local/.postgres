@@ -1,9 +1,15 @@
 # PostgreSQL
 # ------------------------------------------------------------------------------
+# POSTGRES_HOST=postgres
+# POSTGRES_PORT=5432
+# POSTGRES_DB=hirethon_template_db
+# POSTGRES_USER=hirethon_template_user
+# POSTGRES_PASSWORD=hirethon_template_password
+
+# DATABASE_URL=postgresql://hirethon_template_user:hirethon_template_password@postgres:5432/hirethon_template_db
+
 POSTGRES_HOST=postgres
 POSTGRES_PORT=5432
-POSTGRES_DB=hirethon_template_db
-POSTGRES_USER=hirethon_template_user
-POSTGRES_PASSWORD=hirethon_template_password
-
-DATABASE_URL=postgresql://hirethon_template_user:hirethon_template_password@postgres:5432/hirethon_template_db
+POSTGRES_DB=hirethon_template
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres

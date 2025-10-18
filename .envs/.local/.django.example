@@ -1,22 +1,17 @@
 # General
 # ------------------------------------------------------------------------------
 USE_DOCKER=yes
-IPYTHONDIR=/app/.ipython
 DJANGO_DEBUG=True
 DJANGO_SECRET_KEY=changeme-for-production
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+
 # Redis
 # ------------------------------------------------------------------------------
 REDIS_URL=redis://redis:6379/0
-CELERY_BROKER_URL=redis://redis:6379/0
 
 # Celery
 # ------------------------------------------------------------------------------
-
-# Flower
-CELERY_FLOWER_USER=LAIaJxRAajmRXYGSHsMOhLNEWKoQceMW
-CELERY_FLOWER_PASSWORD=6xQjsZN5iyWsQdocucIjBcxY0Ygj5iWjpAXoR93hQwvBVBTSzZnxDLz9xcy93JKl
-
+CELERY_BROKER_URL=redis://redis:6379/0
 
 # AWS S3
 # ------------------------------------------------------------------------------
