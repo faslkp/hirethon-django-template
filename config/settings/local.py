@@ -29,7 +29,7 @@ CACHES = {
 EMAIL_BACKEND = env("DJANGO_EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 
 # Site configuration for invitation emails
-SITE_DOMAIN = env("DJANGO_SITE_DOMAIN", default="localhost:5173")  # Frontend URL
+SITE_DOMAIN = env("DJANGO_SITE_DOMAIN", default="localhost:8000")  # Backend URL for private URLs
 SITE_PROTOCOL = env("DJANGO_SITE_PROTOCOL", default="http")
 
 # WhiteNoise
@@ -125,9 +125,15 @@ CSRF_COOKIE_HTTPONLY = False
 CSRF_COOKIE_SAMESITE = 'Lax'
 SESSION_COOKIE_SAMESITE = 'Lax'
 
-# Exempt API from CSRF for JWT authentication
-# Since we're using JWT tokens for API auth, CSRF is not needed
+# CSRF settings for development
+# ------------------------------------------------------------------------------
+# Completely disable CSRF for development
 CSRF_COOKIE_NAME = "csrftoken"
+CSRF_COOKIE_SECURE = False
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+# Disable CSRF protection for all endpoints in development
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:5173",
@@ -135,9 +141,19 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:5173",
 ]
 
-# CSRF should not apply to API endpoints when using JWT
-# This is safe because JWT tokens provide their own protection against CSRF
-CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
+# Disable CSRF middleware for development
+MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.locale.LocaleMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    # "django.middleware.csrf.CsrfViewMiddleware",  # Disabled for development
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
 
 # JWT token lifetimes for local development
 from datetime import timedelta

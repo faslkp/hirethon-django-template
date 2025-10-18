@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore';
 export const Login = () => {
   const [searchParams] = useSearchParams();
   const inviteToken = searchParams.get('invite');
+  const nextUrl = searchParams.get('next');
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -25,6 +26,9 @@ export const Login = () => {
       // If there's an invitation token, redirect to accept page
       if (inviteToken) {
         navigate(`/accept-invite?token=${inviteToken}`);
+      } else if (nextUrl) {
+        // If there's a next URL (from private URL), redirect to it
+        window.location.href = nextUrl;
       } else {
         navigate('/');
       }

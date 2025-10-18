@@ -26,7 +26,7 @@ urlpatterns = [
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 # Import invitation views
-from hirethon_template.url_shortener.api.views import get_invitation, accept_invitation
+from hirethon_template.url_shortener.api.views import get_invitation, accept_invitation, SessionLoginView
 
 # API URLS
 urlpatterns += [
@@ -45,6 +45,8 @@ urlpatterns += [
     # Invitation endpoints
     path("api/invitations/get/", get_invitation, name="get-invitation"),
     path("api/invitations/accept/", accept_invitation, name="accept-invitation"),
+    # Session-based login for private URLs
+    path("auth/login/", SessionLoginView.as_view(), name="session-login"),
 ]
 
 # URL Shortener redirect - must be at the end to avoid conflicts
