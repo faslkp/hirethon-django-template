@@ -25,6 +25,9 @@ urlpatterns = [
     # Your stuff: custom urls includes go here
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
+# Import invitation views
+from hirethon_template.url_shortener.api.views import get_invitation, accept_invitation
+
 # API URLS
 urlpatterns += [
     # API base url
@@ -39,6 +42,15 @@ urlpatterns += [
     ),
     path('rest-auth/', include('dj_rest_auth.urls')),
     path('rest-auth/registration/', include('dj_rest_auth.registration.urls')),
+    # Invitation endpoints
+    path("api/invitations/get/", get_invitation, name="get-invitation"),
+    path("api/invitations/accept/", accept_invitation, name="accept-invitation"),
+]
+
+# URL Shortener redirect - must be at the end to avoid conflicts
+urlpatterns += [
+    path('<str:namespace>/<str:short_code>/', 
+         include('hirethon_template.url_shortener.urls')),
 ]
 
 if settings.DEBUG:

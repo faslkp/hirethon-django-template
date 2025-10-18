@@ -28,6 +28,10 @@ CACHES = {
 # https://docs.djangoproject.com/en/dev/ref/settings/#email-backend
 EMAIL_BACKEND = env("DJANGO_EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
 
+# Site configuration for invitation emails
+SITE_DOMAIN = env("DJANGO_SITE_DOMAIN", default="localhost:5173")  # Frontend URL
+SITE_PROTOCOL = env("DJANGO_SITE_PROTOCOL", default="http")
+
 # WhiteNoise
 # ------------------------------------------------------------------------------
 # http://whitenoise.evans.io/en/latest/django.html#using-whitenoise-in-development
@@ -70,3 +74,52 @@ ADMIN_INDEX_TITLE = "Welcome to {} Admin Portal (Development)".format("hirethon_
 
 # Your stuff...
 # ------------------------------------------------------------------------------
+
+# CORS settings for local development
+# ------------------------------------------------------------------------------
+# Allow all origins in local development for easier debugging
+CORS_ALLOW_ALL_ORIGINS = True
+
+# Alternatively, if you want to be more restrictive, comment above and use:
+# CORS_ALLOWED_ORIGINS += [
+#     "http://localhost:3000",
+#     "http://localhost:5173",  # Vite default port
+#     "http://127.0.0.1:3000",
+#     "http://127.0.0.1:5173",
+# ]
+
+# CSRF settings for local development
+# ------------------------------------------------------------------------------
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+]
+
+# Allow JavaScript to read CSRF cookie in development
+CSRF_COOKIE_HTTPONLY = False
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SAMESITE = 'Lax'
+
+# Exempt API from CSRF for JWT authentication
+# Since we're using JWT tokens for API auth, CSRF is not needed
+CSRF_COOKIE_NAME = "csrftoken"
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+]
+
+# CSRF should not apply to API endpoints when using JWT
+# This is safe because JWT tokens provide their own protection against CSRF
+CSRF_FAILURE_VIEW = 'django.views.csrf.csrf_failure'
+
+# JWT token lifetimes for local development
+from datetime import timedelta
+SIMPLE_JWT = {
+    **SIMPLE_JWT,  # Inherit from base settings
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),  # 1 hour for comfortable development
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),  # 7 days
+}
