@@ -24,9 +24,12 @@ export const OrganizationDetail = () => {
   const [inviteData, setInviteData] = useState({ email: '', role: 'VIEWER' });
   const [namespaceName, setNamespaceName] = useState('');
   const [inviteSuccess, setInviteSuccess] = useState(null);
+  const [inviteError, setInviteError] = useState(null);
 
   const handleInvite = async (e) => {
     e.preventDefault();
+    setInviteError(null); // Clear any previous errors
+    
     try {
       const result = await inviteMember.mutateAsync({
         orgId: id,
@@ -59,6 +62,24 @@ export const OrganizationDetail = () => {
       }, 2000);
     } catch (error) {
       console.error('Invite error:', error);
+      
+      // Extract error message from the response
+      let errorMessage = 'Failed to send invitation. Please try again.';
+      
+      if (error.response?.data) {
+        const errorData = error.response.data;
+        
+        // Handle field-specific errors
+        if (errorData.email && Array.isArray(errorData.email)) {
+          errorMessage = errorData.email[0];
+        } else if (errorData.non_field_errors && Array.isArray(errorData.non_field_errors)) {
+          errorMessage = errorData.non_field_errors[0];
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+      }
+      
+      setInviteError(errorMessage);
     }
   };
 
@@ -122,7 +143,11 @@ export const OrganizationDetail = () => {
             <h2 className="text-xl font-semibold">Members</h2>
             {isAdmin && (
               <button
-                onClick={() => setShowInviteModal(true)}
+                onClick={() => {
+                  setShowInviteModal(true);
+                  setInviteError(null);
+                  setInviteSuccess(null);
+                }}
                 className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 text-sm"
               >
                 Invite Member
@@ -229,12 +254,20 @@ export const OrganizationDetail = () => {
                 </div>
               ) : (
                 <form onSubmit={handleInvite} className="space-y-4">
+                  {inviteError && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-md">
+                      {inviteError}
+                    </div>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">Email *</label>
                     <input
                       type="email"
                       value={inviteData.email}
-                      onChange={(e) => setInviteData({ ...inviteData, email: e.target.value })}
+                      onChange={(e) => {
+                        setInviteData({ ...inviteData, email: e.target.value });
+                        setInviteError(null); // Clear error when user types
+                      }}
                       className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                       required
                       disabled={inviteMember.isPending}
@@ -263,6 +296,7 @@ export const OrganizationDetail = () => {
                       onClick={() => {
                         setShowInviteModal(false);
                         setInviteSuccess(null);
+                        setInviteError(null);
                       }}
                       className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
                       disabled={inviteMember.isPending}
