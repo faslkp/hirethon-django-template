@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Layout } from '../components/Layout';
-import { useShortUrls, useCreateShortUrl, useDeleteShortUrl, useGenerateQR } from '../hooks/useShortUrls';
+import { useShortUrls, useCreateShortUrl, useUpdateShortUrl, useDeleteShortUrl, useGenerateQR } from '../hooks/useShortUrls';
 import { useNamespaces } from '../hooks/useNamespaces';
 import { copyToClipboard } from '../utils/formatters';
 
@@ -8,10 +8,12 @@ export const URLs = () => {
   const { data: urls, isLoading } = useShortUrls();
   const { data: namespaces } = useNamespaces();
   const createUrl = useCreateShortUrl();
+  const updateUrl = useUpdateShortUrl();
   const deleteUrl = useDeleteShortUrl();
   const generateQR = useGenerateQR();
   
   const [showModal, setShowModal] = useState(false);
+  const [editingUrl, setEditingUrl] = useState(null);
   const [formData, setFormData] = useState({
     namespace_id: '',
     original_url: '',
@@ -21,7 +23,7 @@ export const URLs = () => {
   });
   const [formErrors, setFormErrors] = useState({});
 
-  const handleCreate = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setFormErrors({}); // Clear previous errors
     
@@ -34,17 +36,53 @@ export const URLs = () => {
         delete data.short_code; // Let backend generate
       }
       
-      await createUrl.mutateAsync(data);
+      if (editingUrl) {
+        // Update existing URL
+        await updateUrl.mutateAsync({ id: editingUrl.id, data });
+      } else {
+        // Create new URL
+        await createUrl.mutateAsync(data);
+      }
+      
       setFormData({ namespace_id: '', original_url: '', short_code: '', tags: '', is_private: false });
       setShowModal(false);
+      setEditingUrl(null);
     } catch (error) {
+      console.error('Form submission error:', error.response?.data || error);
       // Display validation errors from backend
       if (error.response?.data) {
         setFormErrors(error.response.data);
       } else {
-        setFormErrors({ general: 'Failed to create short URL. Please try again.' });
+        setFormErrors({ general: `Failed to ${editingUrl ? 'update' : 'create'} short URL. Please try again.` });
       }
     }
+  };
+  
+  // Helper function to safely display error messages (handles both string and array formats)
+  const getErrorMessage = (error) => {
+    if (!error) return null;
+    if (Array.isArray(error)) return error[0];
+    if (typeof error === 'string') return error;
+    return String(error);
+  };
+  
+  const handleEdit = (url) => {
+    setEditingUrl(url);
+    setFormData({
+      namespace_id: url.namespace.id,
+      original_url: url.original_url,
+      short_code: url.short_code,
+      tags: url.tags || '',
+      is_private: url.is_private,
+    });
+    setShowModal(true);
+  };
+  
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setEditingUrl(null);
+    setFormData({ namespace_id: '', original_url: '', short_code: '', tags: '', is_private: false });
+    setFormErrors({});
   };
 
   const handleCopy = async (url) => {
@@ -141,12 +179,21 @@ export const URLs = () => {
                       <button
                         onClick={() => handleGenerateQR(url.id)}
                         className="text-blue-600 hover:text-blue-800"
+                        title="Generate QR Code"
                       >
                         QR
                       </button>
                       <button
+                        onClick={() => handleEdit(url)}
+                        className="text-green-600 hover:text-green-800"
+                        title="Edit"
+                      >
+                        Edit
+                      </button>
+                      <button
                         onClick={() => handleDelete(url.id)}
                         className="text-red-600 hover:text-red-800"
+                        title="Delete"
                       >
                         Delete
                       </button>
@@ -158,16 +205,23 @@ export const URLs = () => {
           </div>
         )}
 
-        {/* Create URL Modal */}
+        {/* Create/Edit URL Modal */}
         {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-white rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-              <h2 className="text-xl font-bold mb-4">Create Short URL</h2>
-              <form onSubmit={handleCreate} className="space-y-4">
+              <h2 className="text-xl font-bold mb-4">
+                {editingUrl ? 'Edit Short URL' : 'Create Short URL'}
+              </h2>
+              <form onSubmit={handleSubmit} className="space-y-4">
                 {/* General error message */}
-                {formErrors.general && (
+                {(formErrors.general || formErrors.detail || formErrors.non_field_errors) && (
                   <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
-                    {formErrors.general}
+                    <p className="font-semibold">⚠️ Error</p>
+                    <p className="mt-1">
+                      {formErrors.general || 
+                       getErrorMessage(formErrors.detail) || 
+                       getErrorMessage(formErrors.non_field_errors)}
+                    </p>
                   </div>
                 )}
                 
@@ -191,7 +245,7 @@ export const URLs = () => {
                     ))}
                   </select>
                   {formErrors.namespace_id && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.namespace_id[0]}</p>
+                    <p className="mt-1 text-sm text-red-600">{getErrorMessage(formErrors.namespace_id)}</p>
                   )}
                 </div>
                 
@@ -210,7 +264,7 @@ export const URLs = () => {
                     required
                   />
                   {formErrors.original_url && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.original_url[0]}</p>
+                    <p className="mt-1 text-sm text-red-600">{getErrorMessage(formErrors.original_url)}</p>
                   )}
                 </div>
                 
@@ -221,15 +275,28 @@ export const URLs = () => {
                   <input
                     type="text"
                     value={formData.short_code}
-                    onChange={(e) => setFormData({ ...formData, short_code: e.target.value })}
-                    className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                      formErrors.short_code ? 'border-red-500' : 'border-gray-300'
+                    onChange={(e) => {
+                      setFormData({ ...formData, short_code: e.target.value });
+                      // Clear short_code error when user starts typing
+                      if (formErrors.short_code) {
+                        setFormErrors({ ...formErrors, short_code: null });
+                      }
+                    }}
+                    className={`w-full px-3 py-2 border-2 rounded-md focus:outline-none focus:ring-2 ${
+                      formErrors.short_code 
+                        ? 'border-red-500 focus:border-red-500 focus:ring-red-200 bg-red-50' 
+                        : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
                     }`}
                     placeholder="my-custom-code"
                   />
                   <p className="mt-1 text-xs text-gray-500">Leave empty to auto-generate</p>
                   {formErrors.short_code && (
-                    <p className="mt-1 text-sm text-red-600">{formErrors.short_code[0]}</p>
+                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded">
+                      <p className="text-sm text-red-700 font-semibold flex items-center">
+                        <span className="mr-2">❌</span>
+                        {getErrorMessage(formErrors.short_code)}
+                      </p>
+                    </div>
                   )}
                 </div>
                 
@@ -262,7 +329,7 @@ export const URLs = () => {
                 <div className="flex justify-end space-x-3 pt-4">
                   <button
                     type="button"
-                    onClick={() => setShowModal(false)}
+                    onClick={handleCloseModal}
                     className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
                   >
                     Cancel
@@ -270,9 +337,12 @@ export const URLs = () => {
                   <button
                     type="submit"
                     className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                    disabled={createUrl.isPending}
+                    disabled={editingUrl ? updateUrl.isPending : createUrl.isPending}
                   >
-                    {createUrl.isPending ? 'Creating...' : 'Create'}
+                    {editingUrl 
+                      ? (updateUrl.isPending ? 'Updating...' : 'Update')
+                      : (createUrl.isPending ? 'Creating...' : 'Create')
+                    }
                   </button>
                 </div>
               </form>

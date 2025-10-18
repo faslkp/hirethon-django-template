@@ -434,6 +434,25 @@ class ShortURLViewSet(viewsets.ModelViewSet):
         
         serializer.save(created_by=self.request.user)
     
+    def perform_update(self, serializer):
+        """Override perform_update to validate permissions"""
+        # Get the namespace - either from the new data or from the existing object
+        namespace = serializer.validated_data.get('namespace', self.get_object().namespace)
+        organization = namespace.organization
+        
+        # Verify user is editor or admin
+        is_editor_or_admin = OrganizationMembership.objects.filter(
+            organization=organization,
+            user=self.request.user,
+            role__in=[OrganizationMembership.Role.ADMIN, OrganizationMembership.Role.EDITOR]
+        ).exists()
+        
+        if not is_editor_or_admin:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Only organization admins and editors can update short URLs.")
+        
+        serializer.save()
+    
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             return [permissions.IsAuthenticated(), CanManageShortURL()]
