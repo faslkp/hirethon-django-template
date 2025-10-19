@@ -5,6 +5,8 @@ from django.conf import settings
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import URLValidator
 from django.core.files.storage import default_storage
+from django.utils import timezone
+from datetime import timedelta
 
 
 def generate_short_code(length=6):
@@ -141,7 +143,6 @@ class OrganizationInvitation(models.Model):
     
     def is_expired(self):
         """Check if invitation has expired"""
-        from django.utils import timezone
         return timezone.now() > self.expires_at
     
     def save(self, *args, **kwargs):
@@ -151,8 +152,6 @@ class OrganizationInvitation(models.Model):
         
         # Set expiry if not set (7 days from now)
         if not self.expires_at:
-            from django.utils import timezone
-            from datetime import timedelta
             self.expires_at = timezone.now() + timedelta(days=7)
         
         super().save(*args, **kwargs)
@@ -273,7 +272,6 @@ class ShortURL(models.Model):
     def get_full_short_url(self, domain=""):
         """Get the full shortened URL"""
         if not domain:
-            from django.conf import settings
             protocol = getattr(settings, 'SITE_PROTOCOL', 'http')
             domain = getattr(settings, 'SITE_DOMAIN', 'localhost:8000')
             return f"{protocol}://{domain}/{self.namespace.name}/{self.short_code}/"
@@ -282,7 +280,6 @@ class ShortURL(models.Model):
     def is_expired(self):
         """Check if the URL has expired"""
         if self.expires_at:
-            from django.utils import timezone
             return timezone.now() > self.expires_at
         return False
 

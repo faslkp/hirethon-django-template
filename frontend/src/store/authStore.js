@@ -130,7 +130,7 @@ export const useAuthStore = create((set) => ({
       
       return { success: true };
     } catch (error) {
-      return { 
+      return {
         success: false, 
         error: error.response?.data || 'Google login failed' 
       };

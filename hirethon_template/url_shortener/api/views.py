@@ -1,15 +1,31 @@
+import qrcode
+import openpyxl
+from io import BytesIO
+from urllib.parse import urlencode
+
+from django.core.files.base import ContentFile
 from django.shortcuts import get_object_or_404, redirect
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
-from django.http import Http404
+from django.http import Http404, HttpResponse, FileResponse, HttpResponseRedirect
+from django.core.mail import send_mail
+from django.conf import settings
+from django.core.files.storage import FileSystemStorage
+from django.db import transaction, models
+from django.middleware.csrf import get_token
+from django.contrib.auth import authenticate, login
+from django.contrib import messages
+
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action, api_view, permission_classes, authentication_classes
 from rest_framework.response import Response
 from rest_framework_simplejwt.authentication import JWTAuthentication
+from rest_framework.exceptions import PermissionDenied
 
+from hirethon_template.utils.storages import MediaRootS3Boto3Storage
 from ..models import Organization, OrganizationMembership, Namespace, ShortURL, BulkUploadTask, OrganizationInvitation
 from .serializers import (
     OrganizationSerializer,
@@ -113,8 +129,6 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     
     def _send_invitation_email(self, organization, invitation, inviter):
         """Send invitation email to unregistered user"""
-        from django.core.mail import send_mail
-        from django.conf import settings
         
         # Build invitation URL
         protocol = getattr(settings, 'SITE_PROTOCOL', 'http')
@@ -149,8 +163,6 @@ The Team
     
     def _send_membership_email(self, organization, user, role, inviter):
         """Send notification email to existing user"""
-        from django.core.mail import send_mail
-        from django.conf import settings
         
         subject = f"You've been added to {organization.name}"
         message = f"""
@@ -293,7 +305,6 @@ def get_invitation(request):
 @permission_classes([permissions.IsAuthenticated])
 def accept_invitation(request):
     """Accept an invitation and join the organization"""
-    from django.utils import timezone
     
     token = request.data.get('token')
     
@@ -381,7 +392,6 @@ class NamespaceViewSet(viewsets.ModelViewSet):
         ).exists()
         
         if not is_admin:
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only organization admins can create namespaces.")
         
         serializer.save(created_by=self.request.user)
@@ -429,7 +439,6 @@ class ShortURLViewSet(viewsets.ModelViewSet):
         ).exists()
         
         if not is_editor_or_admin:
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only organization admins and editors can create short URLs.")
         
         serializer.save(created_by=self.request.user)
@@ -448,7 +457,6 @@ class ShortURLViewSet(viewsets.ModelViewSet):
         ).exists()
         
         if not is_editor_or_admin:
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only organization admins and editors can update short URLs.")
         
         serializer.save()
@@ -466,13 +474,8 @@ class ShortURLViewSet(viewsets.ModelViewSet):
         # Check if QR code already exists and URL hasn't changed
         if short_url.qr_code and short_url.qr_code.name:
             # Verify the existing QR code is still valid by checking if file exists
-            from django.core.files.storage import default_storage
-            from django.conf import settings
-            
-            # Only check the S3 storage directly
             file_exists = False
             try:
-                from hirethon_template.utils.storages import MediaRootS3Boto3Storage
                 s3_storage = MediaRootS3Boto3Storage()
                 file_exists = s3_storage.exists(short_url.qr_code.name)
             except Exception as e:
@@ -488,10 +491,6 @@ class ShortURLViewSet(viewsets.ModelViewSet):
         
         # Import qrcode here to avoid import errors if not installed
         try:
-            import qrcode
-            from io import BytesIO
-            from django.core.files.base import ContentFile
-            
             # Generate full URL
             full_url = self.get_serializer(short_url, context={'request': request}).data['full_short_url']
             
@@ -510,8 +509,6 @@ class ShortURLViewSet(viewsets.ModelViewSet):
             filename = f"qr_{short_url.namespace.name}_{short_url.short_code}.png"
             
             # Use the configured storage (S3 if enabled) with fallback to local
-            from django.core.files.storage import default_storage
-            from django.core.files.storage import FileSystemStorage
             
             # Create ContentFile once from the buffer
             content_file = ContentFile(buffer.read())
@@ -519,7 +516,6 @@ class ShortURLViewSet(viewsets.ModelViewSet):
             
             try:
                 # Import the S3 storage class directly
-                from hirethon_template.utils.storages import MediaRootS3Boto3Storage
                 s3_storage = MediaRootS3Boto3Storage()
                 file_path = s3_storage.save(f"qr_codes/{filename}", content_file)
                 short_url.qr_code = file_path
@@ -556,9 +552,6 @@ class BulkUploadViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], permission_classes=[permissions.AllowAny])
     def template(self, request):
         """Download Excel template for bulk upload"""
-        import openpyxl
-        from io import BytesIO
-        from django.http import HttpResponse
         
         # Create workbook
         wb = openpyxl.Workbook()
@@ -612,14 +605,12 @@ class BulkUploadViewSet(viewsets.ModelViewSet):
         ).exists()
         
         if not is_editor_or_admin:
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied("Only organization admins and editors can upload bulk URLs.")
         
         # Create the task
         task = serializer.save(created_by=self.request.user)
         
         # Trigger Celery task AFTER database commit to ensure task exists
-        from django.db import transaction
         transaction.on_commit(lambda: process_bulk_upload_task.delay(task.id))
     
     @action(detail=True, methods=['get'], permission_classes=[permissions.IsAuthenticated])
@@ -633,7 +624,6 @@ class BulkUploadViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        from django.http import FileResponse
         return FileResponse(
             task.output_file.open('rb'),
             as_attachment=True,
@@ -645,46 +635,28 @@ class URLRedirectView(View):
     """View to handle short URL redirects"""
     
     def get(self, request, namespace, short_code):
-        print(f"DEBUG: URLRedirectView called - namespace: {namespace}, short_code: {short_code}")
-        print(f"DEBUG: Request path: {request.path}")
-        print(f"DEBUG: Request method: {request.method}")
-        
         # Find the short URL
         try:
             short_url = ShortURL.objects.select_related('namespace').get(
                 namespace__name=namespace,
                 short_code=short_code
             )
-            print(f"DEBUG: Short URL found: {short_url}")
         except ShortURL.DoesNotExist:
-            print(f"DEBUG: Short URL not found - namespace: {namespace}, short_code: {short_code}")
             raise Http404("Short URL not found")
         
         # Check if expired
         if short_url.is_expired():
             raise Http404("This URL has expired")
         
-        # Debug: Print URL details
-        print(f"DEBUG: Short URL - is_private: {short_url.is_private}")
-        print(f"DEBUG: Short URL - namespace: {short_url.namespace.name}")
-        print(f"DEBUG: Short URL - organization: {short_url.namespace.organization.name}")
-        
         # Check if private
         if short_url.is_private:
             # Check if user is authenticated via session or JWT
             user = None
             
-            # Debug: Print authentication status
-            print(f"DEBUG: User authenticated: {request.user.is_authenticated}")
-            print(f"DEBUG: User: {request.user}")
-            print(f"DEBUG: Session key: {request.session.session_key}")
-            
             # Try session authentication first
             if request.user.is_authenticated:
                 user = request.user
-                print(f"DEBUG: Using session user: {user}")
             else:
-                print("DEBUG: No session authentication")
                 # Try JWT token in query params or header
                 token = request.GET.get('token') or request.META.get('HTTP_AUTHORIZATION', '').replace('Bearer ', '')
                 
@@ -693,7 +665,6 @@ class URLRedirectView(View):
                         jwt_auth = JWTAuthentication()
                         validated_token = jwt_auth.get_validated_token(token)
                         user = jwt_auth.get_user(validated_token)
-                        print(f"DEBUG: Using JWT user: {user}")
                     except Exception as e:
                         print(f"DEBUG: JWT authentication failed: {e}")
                         pass  # Invalid token, will show login page
@@ -701,10 +672,6 @@ class URLRedirectView(View):
                     print("DEBUG: No JWT token provided")
             
             if not user:
-                from django.http import HttpResponse
-                from django.conf import settings
-                from urllib.parse import urlencode
-                
                 # Create return URL for after login
                 current_url = request.build_absolute_uri()
                 return_url = urlencode({'next': current_url})
@@ -741,7 +708,6 @@ class URLRedirectView(View):
             # Check if user is the creator of the URL
             if user != short_url.created_by:
                 print(f"DEBUG: Access denied - User {user} is not the creator {short_url.created_by}")
-                from django.http import HttpResponse
                 html_content = f"""
                 <!DOCTYPE html>
                 <html>
@@ -778,17 +744,10 @@ class URLRedirectView(View):
         return redirect(short_url.original_url)
 
 
-# Import models for F() expression
-from django.db import models
-
 class SessionLoginView(View):
     """Custom login view for session-based authentication"""
     
     def get(self, request):
-        from django.http import HttpResponse
-        from django.conf import settings
-        from django.middleware.csrf import get_token
-        
         next_url = request.GET.get('next', '/')
         csrf_token = get_token(request)
         
@@ -896,17 +855,9 @@ class SessionLoginView(View):
         return HttpResponse(html_content, content_type='text/html')
     
     def post(self, request):
-        from django.contrib.auth import authenticate, login
-        from django.http import HttpResponseRedirect
-        from django.contrib import messages
-        from django.middleware.csrf import get_token
-        
         email = request.POST.get('email')
         password = request.POST.get('password')
         next_url = request.POST.get('next', '/')
-        
-        print(f"DEBUG: POST request received - Email: {email}, Next: {next_url}")
-        print(f"DEBUG: CSRF token valid: {request.META.get('CSRF_COOKIE')}")
         
         if email and password:
             # Authenticate user
@@ -914,16 +865,12 @@ class SessionLoginView(View):
             if user is not None:
                 # Login user and create session
                 login(request, user)
-                print(f"DEBUG: User logged in via session: {user}")
-                print(f"DEBUG: Session key after login: {request.session.session_key}")
                 # Redirect to the next URL
                 return HttpResponseRedirect(next_url)
             else:
                 # Authentication failed
-                print("DEBUG: Authentication failed - invalid credentials")
                 messages.error(request, 'Invalid email or password.')
         else:
-            print("DEBUG: Missing email or password")
             messages.error(request, 'Please provide both email and password.')
         
         # If authentication failed, redirect back to login page

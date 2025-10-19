@@ -12,7 +12,7 @@ import { useCreateNamespace } from '../hooks/useNamespaces';
 
 export const OrganizationDetail = () => {
   const { id } = useParams();
-  const { data: organization, isLoading } = useOrganization(id);
+  const { data: organization, isLoading, refetch: refetchOrganization } = useOrganization(id);
   const { data: members } = useOrganizationMembers(id);
   const { data: invitations } = useOrganizationInvitations(id);
   const inviteMember = useInviteMember();
@@ -91,12 +91,18 @@ export const OrganizationDetail = () => {
 
   const handleCreateNamespace = async (e) => {
     e.preventDefault();
-    await createNamespace.mutateAsync({
-      name: namespaceName,
-      organization_id: parseInt(id),
-    });
-    setNamespaceName('');
-    setShowNamespaceModal(false);
+    try {
+      await createNamespace.mutateAsync({
+        name: namespaceName,
+        organization_id: parseInt(id),
+      });
+      setNamespaceName('');
+      setShowNamespaceModal(false);
+      // Force a refetch of the organization data
+      await refetchOrganization();
+    } catch (error) {
+      console.error('Failed to create namespace:', error);
+    }
   };
 
   if (isLoading) return <Layout><p>Loading...</p></Layout>;

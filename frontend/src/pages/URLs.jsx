@@ -40,6 +40,9 @@ export const URLs = () => {
       if (!data.short_code || !data.short_code.trim()) {
         delete data.short_code; // Let backend generate
       }
+      if (!data.expires_at || !data.expires_at.trim()) {
+        delete data.expires_at; // Remove empty expiry date
+      }
       
       if (editingUrl) {
         // Update existing URL
@@ -455,6 +458,7 @@ export const URLs = () => {
                     onChange={(e) => setFormData({ ...formData, expires_at: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   />
+                  <p className="mt-1 text-xs text-gray-500">Leave empty for no expiration</p>
                   {formErrors.expires_at && (
                     <p className="mt-1 text-sm text-red-600">{getErrorMessage(formErrors.expires_at)}</p>
                   )}

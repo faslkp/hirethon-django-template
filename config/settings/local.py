@@ -1,5 +1,6 @@
 from .base import *  # noqa
 from .base import env
+from datetime import timedelta
 
 # GENERAL
 # ------------------------------------------------------------------------------
@@ -156,7 +157,6 @@ MIDDLEWARE = [
 ]
 
 # JWT token lifetimes for local development
-from datetime import timedelta
 SIMPLE_JWT = {
     **SIMPLE_JWT,  # Inherit from base settings
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),  # 1 hour for comfortable development

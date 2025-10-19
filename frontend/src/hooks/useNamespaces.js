@@ -27,10 +27,17 @@ export const useCreateNamespace = () => {
   
   return useMutation({
     mutationFn: (data) => namespacesAPI.create(data),
-    onSuccess: () => {
-      // Invalidate both namespaces and organizations queries
+    onSuccess: (_, variables) => {
+      // Invalidate all related queries
       queryClient.invalidateQueries({ queryKey: ['namespaces'] });
       queryClient.invalidateQueries({ queryKey: ['organizations'] });
+      // Invalidate all organization queries (both list and individual)
+      queryClient.invalidateQueries({ queryKey: ['organization'] });
+      // Also try to invalidate with the specific ID
+      if (variables.organization_id) {
+        queryClient.invalidateQueries({ queryKey: ['organization', variables.organization_id] });
+        queryClient.invalidateQueries({ queryKey: ['organization', String(variables.organization_id)] });
+      }
     },
   });
 };
@@ -42,6 +49,7 @@ export const useDeleteNamespace = () => {
     mutationFn: (id) => namespacesAPI.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['namespaces'] });
+      queryClient.invalidateQueries({ queryKey: ['organizations'] });
     },
   });
 };
