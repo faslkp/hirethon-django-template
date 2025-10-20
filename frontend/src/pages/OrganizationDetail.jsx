@@ -13,8 +13,11 @@ import { useCreateNamespace } from '../hooks/useNamespaces';
 export const OrganizationDetail = () => {
   const { id } = useParams();
   const { data: organization, isLoading, refetch: refetchOrganization } = useOrganization(id);
-  const { data: members } = useOrganizationMembers(id);
+  const { data: members, isLoading: membersLoading, error: membersError } = useOrganizationMembers(id);
   const { data: invitations } = useOrganizationInvitations(id);
+  
+  // Use members from organization data if available, otherwise use separate API call
+  const displayMembers = organization?.memberships || members;
   const inviteMember = useInviteMember();
   const cancelInvitation = useCancelInvitation();
   const createNamespace = useCreateNamespace();
@@ -170,21 +173,41 @@ export const OrganizationDetail = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {members?.map((member) => (
-                  <tr key={member.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {member.user.email}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-600">
-                        {member.role}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(member.joined_at).toLocaleDateString()}
+                {(isLoading || membersLoading) ? (
+                  <tr>
+                    <td colSpan="3" className="px-6 py-4 text-center text-sm text-gray-500">
+                      Loading members...
                     </td>
                   </tr>
-                ))}
+                ) : membersError ? (
+                  <tr>
+                    <td colSpan="3" className="px-6 py-4 text-center text-sm text-red-500">
+                      Error loading members: {membersError.message}
+                    </td>
+                  </tr>
+                ) : displayMembers && displayMembers.length > 0 ? (
+                  displayMembers.map((member) => (
+                    <tr key={member.id}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {member.user?.email || 'No email'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-600">
+                          {member.role}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {member.joined_at ? new Date(member.joined_at).toLocaleDateString() : 'Unknown'}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="3" className="px-6 py-4 text-center text-sm text-gray-500">
+                      No members found
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

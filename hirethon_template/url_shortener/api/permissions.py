@@ -112,6 +112,25 @@ class IsOrgMember(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         
+        # For detail views, we need to get the organization from the URL
+        if hasattr(view, 'get_object'):
+            try:
+                # Get the organization from the view's get_object method
+                obj = view.get_object()
+                if hasattr(obj, 'organization'):
+                    organization = obj.organization
+                elif obj.__class__.__name__ == 'Organization':
+                    organization = obj
+                else:
+                    return False
+                
+                return OrganizationMembership.objects.filter(
+                    organization=organization,
+                    user=request.user
+                ).exists()
+            except:
+                return False
+        
         # For list views, we need to check if user is a member of any organization
         # or if the view has an organization attribute
         if hasattr(view, 'organization') and view.organization:

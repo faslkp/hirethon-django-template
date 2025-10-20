@@ -2,6 +2,7 @@ import openpyxl
 from io import BytesIO
 from celery import shared_task
 from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from .models import BulkUploadTask, ShortURL, Namespace
 
 
@@ -140,11 +141,23 @@ def process_bulk_upload_task(self, task_id):
         output_buffer.seek(0)
         
         output_filename = f"bulk_upload_result_{task_id}.xlsx"
-        task.output_file.save(
-            output_filename,
-            ContentFile(output_buffer.read()),
-            save=False
-        )
+        
+        # Use the configured storage (S3 if enabled) with fallback to local
+        try:
+            # Use the same storage approach as QR code generation
+            from hirethon_template.utils.storages import MediaRootS3Boto3Storage
+            s3_storage = MediaRootS3Boto3Storage()
+            file_path = s3_storage.save(f"bulk_uploads/output/{output_filename}", ContentFile(output_buffer.read()))
+            task.output_file = file_path
+            task.save()
+        except Exception as e:
+            # Fallback to local storage if S3 fails
+            output_buffer.seek(0)
+            from django.core.files.storage import FileSystemStorage
+            local_storage = FileSystemStorage()
+            file_path = local_storage.save(f"bulk_uploads/output/{output_filename}", ContentFile(output_buffer.read()))
+            task.output_file = file_path
+            task.save()
         
         # Update task status
         task.status = BulkUploadTask.Status.COMPLETED
